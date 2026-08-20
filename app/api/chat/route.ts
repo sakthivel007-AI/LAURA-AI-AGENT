@@ -41,7 +41,7 @@ export async function POST(req: Request) {
       system: SYSTEM_PROMPT,
       messages: convertToCoreMessages(messages),
       tools,
-      maxSteps: 8,
+      maxSteps: 4,
 
       onError({ error }) {
         console.error("AI STREAM ERROR:", error);
