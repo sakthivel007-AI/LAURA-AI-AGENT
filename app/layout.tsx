@@ -1,26 +1,11 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
+import "@fontsource-variable/dm-sans";
 import "./globals.css";
 
-const display = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-display",
-  weight: ["500", "600", "700"],
-});
-const body = Inter({
-  subsets: ["latin"],
-  variable: "--font-body",
-  weight: ["400", "500", "600"],
-});
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  weight: ["400", "500"],
-});
-
 export const metadata: Metadata = {
-  title: "LAURA ",
-  description: "A personal agentic AI",
+  title: "Laura — Your thinking partner",
+  description:
+    "A little intelligence. Endless possibility. Explore, create, build, and understand with Laura, your personal AI workspace.",
 };
 
 export default function RootLayout({
@@ -29,8 +14,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
-      <body className="font-body">{children}</body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }

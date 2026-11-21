@@ -1,66 +1,85 @@
 import { tool } from "ai";
 import { z } from "zod";
-
-// ---------------------------------------------------------------------------
-// Define your agent's tools here. Each tool the model can call autonomously
-// as part of its reasoning loop — this is what makes it "agentic" rather
-// than a plain chatbot. Swap the bodies below for real implementations
-// (a search API, your filesystem, a database, etc).
-// ---------------------------------------------------------------------------
+import { calculate } from "./calculator";
 
 export const tools = {
   webSearch: tool({
     description:
-      "Search the web for current information. Use this for anything time-sensitive, recent, or that you're not certain about.",
+      "Search the web for current information. Cite source URLs in your answer. If unavailable, tell the user; never invent search results.",
     parameters: z.object({
-      query: z.string().describe("The search query"),
+      query: z.string().trim().min(1).max(500).describe("The search query"),
     }),
-    execute: async ({ query }) => {
-      // Plug in a real provider (Tavily, SerpAPI, Brave Search, etc).
-      // Returning a stub so the app runs out of the box.
+    execute: async ({ query }, { abortSignal }) => {
       const apiKey = process.env.TAVILY_API_KEY;
-      if (!apiKey) {
+      if (!apiKey)
         return {
-          note: "No search provider configured. Add TAVILY_API_KEY to enable real web search.",
-          query,
+          error:
+            "Web search is not configured. Ask the workspace owner to add TAVILY_API_KEY.",
         };
+      const controller = new AbortController();
+      const cancel = () => controller.abort();
+      if (abortSignal?.aborted) controller.abort();
+      abortSignal?.addEventListener("abort", cancel, { once: true });
+      const timer = setTimeout(cancel, 12000);
+      try {
+        const response = await fetch("https://api.tavily.com/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key: apiKey, query, max_results: 5 }),
+          signal: controller.signal,
+        });
+        if (!response.ok)
+          return { error: "Search provider is unavailable. Try again later." };
+        const data = z
+          .object({
+            results: z
+              .array(
+                z.object({
+                  title: z.string(),
+                  url: z.string().url(),
+                  content: z.string(),
+                }),
+              )
+              .max(10),
+          })
+          .parse(await response.json());
+        return {
+          results: data.results
+            .slice(0, 5)
+            .map((r) => ({ ...r, content: r.content.slice(0, 3000) })),
+        };
+      } catch {
+        return { error: "Search failed or timed out. Please try again." };
+      } finally {
+        clearTimeout(timer);
+        abortSignal?.removeEventListener("abort", cancel);
       }
-      const res = await fetch("https://api.tavily.com/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: apiKey, query, max_results: 5 }),
-      });
-      const data = await res.json();
-      return data;
     },
   }),
-
   calculator: tool({
-    description: "Evaluate a mathematical expression precisely.",
+    description:
+      "Evaluate arithmetic (+, -, *, /, %, ^, parentheses). Uses JavaScript floating-point numbers, not financial decimal precision.",
     parameters: z.object({
-      expression: z.string().describe("A math expression, e.g. '(12 * 7) + 3^2'"),
+      expression: z
+        .string()
+        .min(1)
+        .max(500)
+        .describe("An arithmetic expression, e.g. '(12 * 7) + 3^2'"),
     }),
     execute: async ({ expression }) => {
       try {
-        // Safe-ish eval: strip anything that isn't a number/operator.
-        const cleaned = expression.replace(/\^/g, "**");
-        if (!/^[0-9+\-*/().%\s]*$/.test(cleaned)) {
-          return { error: "Expression contains disallowed characters." };
-        }
-        // eslint-disable-next-line no-eval
-        const result = eval(cleaned);
-        return { expression, result };
-      } catch (e) {
-        return { error: "Could not evaluate expression." };
+        return { expression, result: calculate(expression) };
+      } catch {
+        return {
+          error:
+            "Could not evaluate expression. Use valid arithmetic with a finite result.",
+        };
       }
     },
   }),
-
   getDateTime: tool({
-    description: "Get the current date and time.",
+    description: "Get the current date and time in UTC.",
     parameters: z.object({}),
-    execute: async () => {
-      return { iso: new Date().toISOString() };
-    },
+    execute: async () => ({ iso: new Date().toISOString(), timezone: "UTC" }),
   }),
 };
